@@ -2,15 +2,35 @@ import streamlit as st
 import duckdb
 import pandas as pd
 
+# Import our processing modules to run them dynamically if needed
+import ingest_nosql
+import transform_nosql
+
 st.set_page_config(page_title="NoSQL Event Flattening Engine", layout="wide")
 
 st.title("🛰️ NoSQL Data Pipeline: MongoDB Event Flattening Engine")
 st.markdown("Decompressing and transformation-modeling nested JSON application tracking streams into structured relational marts.")
 
-# Connect to our storage layer
-db_conn = duckdb.connect("unstructured_analytics.db")
+db_filename = "unstructured_analytics.db"
 
-# Read the modeled warehouse dataset
+# --- PRODUCTION DATA QUALITY & INITIALIZATION CHECK ---
+db_conn = duckdb.connect(db_filename)
+
+# Check what tables currently exist in the database instance
+try:
+    tables = [row[0] for row in db_conn.execute("SHOW TABLES").fetchall()]
+except Exception:
+    tables = []
+
+if "fct_flattened_order_items" not in tables:
+    with st.spinner("⏳ First-time setup: Initializing NoSQL mock layers and executing SQL UNNEST engines..."):
+        # 1. Force run ingestion to land raw logs into staging
+        ingest_nosql.generate_mock_mongodb_data()
+        # 2. Force run transformation to flatten everything completely
+        transform_nosql.flatten_unstructured_events()
+    st.success("✅ Analytical marts successfully modeled on the cloud!")
+
+# Read the modeled warehouse dataset safely
 df_flat = db_conn.execute("SELECT * FROM fct_flattened_order_items").df()
 db_conn.close()
 
